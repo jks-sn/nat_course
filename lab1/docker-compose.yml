@@ -1,0 +1,124 @@
+services:
+  manager:
+    build:
+      context: .
+      dockerfile: Manager/Dockerfile
+    container_name: crackhash_manager
+    ports:
+      - "8082:8082"
+    environment:
+      - ASPNETCORE_URLS=http://+:8082
+#      - ManagerOptions__WorkersCount=2
+#      - ManagerOptions__WorkerUrlPattern=http://worker-{0}:8081
+#      - ManagerOptions__TaskTimeoutSeconds=30
+    networks:
+      - crackhash_network
+
+  worker-1:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    container_name: crackhash_worker_1
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+#      - MANAGER_API_URL=http://manager:8082
+    depends_on:
+      - manager
+    networks:
+      - crackhash_network
+
+  worker-2:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    container_name: crackhash_worker_2
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+#      - MANAGER_API_URL=http://manager:8082
+    depends_on:
+      - manager
+    networks:
+      - crackhash_network
+
+  worker-3:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    container_name: crackhash_worker_3
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+    #      - MANAGER_API_URL=http://manager:8082
+    depends_on:
+      - manager
+    networks:
+      - crackhash_network
+
+  worker-4:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    container_name: crackhash_worker_4
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+    #      - MANAGER_API_URL=http://manager:8082
+    depends_on:
+      - manager
+    networks:
+      - crackhash_network
+
+#  worker-5:
+#    build:
+#      context: .
+#      dockerfile: Worker/Dockerfile
+#    container_name: crackhash_worker_5
+#    environment:
+#      - ASPNETCORE_URLS=http://+:8081
+#    #      - MANAGER_API_URL=http://manager:8082
+#    depends_on:
+#      - manager
+#    networks:
+#      - crackhash_network
+#
+#  worker-6:
+#    build:
+#      context: .
+#      dockerfile: Worker/Dockerfile
+#    container_name: crackhash_worker_6
+#    environment:
+#      - ASPNETCORE_URLS=http://+:8081
+#    #      - MANAGER_API_URL=http://manager:8082
+#    depends_on:
+#      - manager
+#    networks:
+#      - crackhash_network
+#
+#  worker-7:
+#    build:
+#      context: .
+#      dockerfile: Worker/Dockerfile
+#    container_name: crackhash_worker_7
+#    environment:
+#      - ASPNETCORE_URLS=http://+:8081
+#    #      - MANAGER_API_URL=http://manager:8082
+#    depends_on:
+#      - manager
+#    networks:
+#      - crackhash_network
+#
+#  worker-8:
+#    build:
+#      context: .
+#      dockerfile: Worker/Dockerfile
+#    container_name: crackhash_worker_8
+#    environment:
+#      - ASPNETCORE_URLS=http://+:8081
+#    #      - MANAGER_API_URL=http://manager:8082
+#    depends_on:
+#      - manager
+#    networks:
+#      - crackhash_network
+
+
+networks:
+  crackhash_network:
+    driver: bridge
