@@ -1,0 +1,133 @@
+# ---------- NETWORK ----------
+networks:
+  crackhash_net:
+    driver: bridge
+
+# ---------- VOLUMES ----------
+volumes:
+  pg_data:
+  rabbit_data:
+
+# ---------- DATABASE (PostgreSQL реплика-set) ----------
+# Primary (sync_commit = on)
+services:
+  # Primary PostgreSQL
+  postgres-primary:
+    image: bitnami/postgresql:16
+    environment:
+      - POSTGRESQL_POSTGRES_PASSWORD=postgres      # superuser
+      - POSTGRESQL_USERNAME=crackuser
+      - POSTGRESQL_PASSWORD=crackpass
+      - POSTGRESQL_DATABASE=crackhash
+      - POSTGRESQL_SYNCHRONOUS_COMMIT=on
+      - POSTGRESQL_REPLICATION_MODE=master
+      - POSTGRESQL_REPLICATION_USER=repl
+      - POSTGRESQL_REPLICATION_PASSWORD=replpass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crackuser -d crackhash"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    volumes:
+      - pg_data:/bitnami/postgresql
+    networks: [crackhash_net]
+
+  # Replica 1
+  postgres-replica1:
+    image: bitnami/postgresql:16
+    environment:
+      - POSTGRESQL_REPLICATION_MODE=slave
+      - POSTGRESQL_MASTER_HOST=postgres-primary 
+      - POSTGRESQL_MASTER_PORT_NUMBER=5432
+      - POSTGRESQL_REPLICATION_USER=repl
+      - POSTGRESQL_REPLICATION_PASSWORD=replpass
+      - POSTGRESQL_PASSWORD=crackpass
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks: [crackhash_net]
+    
+  # ---------- RABBITMQ ----------
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmqctl status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"   # Web-UI
+    networks: [crackhash_net]
+  
+  # ---------- MANAGER ----------
+  manager:
+    build:
+      context: .
+      dockerfile: Manager/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8082
+      - ConnectionStrings__CrackDb=Host=postgres-primary;Port=5432;Database=crackhash;Username=crackuser;Password=crackpass
+      - Rabbit__Host=rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres-primary:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    networks: [crackhash_net]
+  
+  # ---------- WORKERS ----------
+  worker-1:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+      - Rabbit__Host=rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks: [crackhash_net]
+
+  worker-2:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+      - Rabbit__Host=rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks: [crackhash_net]
+
+  worker-3:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+      - Rabbit__Host=rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks: [crackhash_net]
+
+  worker-4:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    environment:
+      - ASPNETCORE_URLS=http://+:8081
+      - Rabbit__Host=rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks: [crackhash_net]
