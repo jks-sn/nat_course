@@ -12,29 +12,43 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---------- Logging ----------
-builder.Logging.ClearProviders();                     // убираем то, что ASP.NET регистрирует сам
-builder.Logging.AddConfiguration(                     // читаем уровни из appsettings*.json
+// -------------------------------------------------------------------
+// //  Logging
+// // -------------------------------------------------------------------
+builder.Logging.ClearProviders();
+builder.Logging.AddConfiguration( 
     builder.Configuration.GetSection("Logging"));
-builder.Logging.AddSimpleConsole(o =>                 // наш Console-provider
+builder.Logging.AddSimpleConsole(o =>
 {
     o.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff ";
     o.SingleLine      = true;
 });
 
-// Configuration
+// -------------------------------------------------------------------
+// //  Configuration & Options
+// // -------------------------------------------------------------------
 builder.Configuration.AddEnvironmentVariables();
 
 builder.Services.Configure<ManagerOptions>(builder.Configuration.GetSection("ManagerOptions"));
 builder.Services.Configure<RabbitOptions>(builder.Configuration.GetSection("Rabbit"));
 
-// DbContext
+// -------------------------------------------------------------------
+// //  PostgreSQL  (multihost, retry-on-failure)
+// // -------------------------------------------------------------------
 var cs = builder.Configuration.GetConnectionString("CrackDb")!;
-NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
-builder.Services.AddDbContext<CrackDbContext>(opts =>
-    opts.UseNpgsql(cs, npgsql => npgsql.EnableRetryOnFailure()));
+builder.Services.AddDbContext<CrackDbContext>((sp, opt) =>
+{
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    opt.UseNpgsql(cfg.GetConnectionString("CrackDb"),
+        npg => npg.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(5),
+            errorCodesToAdd: null));
+});
 
-// MassTransit
+// -------------------------------------------------------------------
+// //  MassTransit (RabbitMQ)
+// // -------------------------------------------------------------------
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<WorkerResultConsumer>();
@@ -58,14 +72,23 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-// Hosted services
-builder.Services.AddHostedService<TaskDispatcherService>();
+// -------------------------------------------------------------------
+// //  Hosted services & DI helpers
+// // -------------------------------------------------------------------
+builder.Services.AddSingleton<TaskDispatcherService>();
+builder.Services.AddSingleton<ITaskDispatcher>(sp =>
+    sp.GetRequiredService<TaskDispatcherService>());
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<TaskDispatcherService>());
 builder.Services.AddHostedService<RequestTimeoutService>();
 builder.Services.AddSingleton<ResultWriter>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ResultWriter>());
 
+// -------------------------------------------------------------------
+//  MVC
+// -------------------------------------------------------------------
 builder.Services.AddControllers()
-    .AddJsonOptions(o => o.JsonSerializerOptions.PropertyNamingPolicy = null); // camel-case уже в модели
+    .AddJsonOptions(o => o.JsonSerializerOptions.PropertyNamingPolicy = null);
 
 
 var app = builder.Build();
@@ -73,7 +96,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<CrackDbContext>();
-    db.Database.Migrate();
+    await db.Database.MigrateAsync();
 }
 
 app.MapControllers();

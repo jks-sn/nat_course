@@ -2,6 +2,7 @@
 
 using Manager.Contracts;
 using Manager.Data;
+using Manager.Models;
 using Manager.Options;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +14,52 @@ public class TaskDispatcherService(
     IServiceProvider provider,
     IOptions<RabbitOptions> rabbitOpts,
     ILogger<TaskDispatcherService> logger)
-    : BackgroundService
+    : BackgroundService, ITaskDispatcher
 {
     private readonly RabbitOptions _rabbit = rabbitOpts.Value;
 
+    //---------------------------------------------------------------
+    //  ITaskDispatcher – немедленная публикация из контроллера
+    //---------------------------------------------------------------
+    public async Task PublishTasksAsync(
+        CrackRequest request,
+        CancellationToken ct = default)
+    {
+        // отдельный DI-scope, чтобы не тащить DbContext из контроллера
+        using var scope = provider.CreateScope();
+        var db  = scope.ServiceProvider.GetRequiredService<CrackDbContext>();
+        var bus = scope.ServiceProvider.GetRequiredService<IBus>();
+
+        var tasks = await db.Tasks
+            .Where(t => t.RequestId == request.Id && !t.Published)
+            .ToListAsync(ct);
+
+        if (tasks.Count == 0) return;
+
+        var endpoint = await bus.GetSendEndpoint(
+            new Uri($"queue:{_rabbit.TaskQueue}"));
+
+        foreach (var t in tasks)
+        {
+            await endpoint.Send<ICrackTaskMessage>(new
+            {
+                t.TaskId, t.RequestId,
+                request.Hash, request.MaxLength,
+                t.PartNumber, t.PartCount
+            }, ct);
+
+            t.Published = true;
+        }
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "PublishTasksAsync: sent {Cnt} tasks for Request {Id}",
+            tasks.Count, request.Id);
+    }
+    
+    //---------------------------------------------------------------
+    //  BackgroundService – проверяем БД раз в секунду
+    //---------------------------------------------------------------
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)

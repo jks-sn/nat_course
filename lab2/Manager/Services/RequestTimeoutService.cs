@@ -30,7 +30,7 @@ public class RequestTimeoutService(IOptions<ManagerOptions> opts, IServiceProvid
                     req.Status = "ERROR";
                     req.CompletedAt = DateTime.UtcNow;
                 }
-                if (expired.Any())
+                if (expired.Count > 0)
                     await db.SaveChangesAsync(stoppingToken);
             }
             catch (Exception ex)
